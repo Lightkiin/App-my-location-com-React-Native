@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View, Alert } from "react-native";
 import {
   Appbar,
   Button,
@@ -63,15 +63,36 @@ export default function App() {
     setIsLoading(true);
 
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } =
+        await Location.requestForegroundPermissionsAsync();
 
       if (status !== "granted") {
-        alert("Permissão negada!");
+        Alert.alert("Permissão negada", "Ative a localização no dispositivo.");
         setIsLoading(false);
         return;
       }
 
-      let location = await Location.getCurrentPositionAsync({});
+      let location = null;
+
+      try {
+        // tenta pegar localização atual
+        location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+      } catch {
+        // fallback (muito útil em emulador)
+        location = await Location.getLastKnownPositionAsync();
+      }
+
+      if (!location) {
+        Alert.alert(
+          "Erro",
+          "Não foi possível obter a localização. Ative o GPS ou configure o emulador."
+        );
+        setIsLoading(false);
+        return;
+      }
+
       const coords = location.coords;
 
       // salva no banco
@@ -81,9 +102,10 @@ export default function App() {
       );
 
       // recarrega lista
-      loadLocations();
+      await loadLocations();
     } catch (e) {
       console.log("Erro ao obter localização", e);
+      Alert.alert("Erro", "Falha ao obter localização.");
     }
 
     setIsLoading(false);
@@ -98,7 +120,6 @@ export default function App() {
 
     try {
       const rows = await db.getAllAsync("SELECT * FROM locations");
-
       setLocations(rows);
     } catch (e) {
       console.log("Erro ao carregar locations", e);
@@ -117,11 +138,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isSwitchOn) {
-      setTheme({ ...theme, colors: myColorsDark.colors });
-    } else {
-      setTheme({ ...theme, colors: myColors.colors });
-    }
+    setTheme({
+      ...DefaultTheme,
+      colors: isSwitchOn ? myColorsDark.colors : myColors.colors,
+    });
   }, [isSwitchOn]);
 
   // =========================
@@ -134,7 +154,7 @@ export default function App() {
         <Appbar.Content title="My Location" />
       </Appbar.Header>
 
-      <View style={{ backgroundColor: theme.colors.background }}>
+      <View style={{ backgroundColor: theme.colors.background, flex: 1 }}>
         <View style={styles.containerDarkMode}>
           <Text>Dark Mode</Text>
           <Switch value={isSwitchOn} onValueChange={onToggleSwitch} />
